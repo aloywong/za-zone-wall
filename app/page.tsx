@@ -87,8 +87,8 @@ export default function HomePage() {
           quality: 0.9
         });
 
-        const finalBlob = Array.isArray(convertedBlob) ? convertedBlob : convertedBlob;
-        selectedFile = finalBlob;
+        const finalBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
+        selectedFile = finalBlob ?? imageFile;
         mimeType = 'image/jpeg';
         fileExt = 'jpg';
       } else if (mimeType.includes('png')) {
@@ -102,7 +102,7 @@ export default function HomePage() {
         return;
       }
 
-      const fileName = `\${Date.now()}-\${Math.random().toString(36).slice(2)}.\${fileExt}`;
+      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
       const filePath = fileName;
 
       const { error: uploadError } = await supabase.storage
@@ -147,7 +147,7 @@ export default function HomePage() {
   }
 
   function getTagInfo(tagValue: string) {
-    return TAGS.find((t) => t.value === tagValue) ?? TAGS;
+    return TAGS.find((t) => t.value === tagValue) ?? TAGS[0];
   }
 
   return (
@@ -161,8 +161,6 @@ export default function HomePage() {
       >
         <source src="/bg-video.mp4" type="video/mp4" />
       </video>
-
-      <div className="absolute inset-0 bg-white/70" />
 
       <div className="relative z-10 p-6">
         <div className="mx-auto max-w-6xl">
@@ -214,7 +212,7 @@ export default function HomePage() {
               <input
                 type="file"
                 accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif"
-                onChange={(e) => setImageFile(e.target.files?. ?? null)}
+                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
                 className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
               />
 
@@ -229,7 +227,7 @@ export default function HomePage() {
           </div>
 
           <section>
-            <h2 className="mb-4 text-3xl font-semibold text-gray-900">Wall</h2>
+            <h2 className="mb-4 text-3xl font-semibold text-white">Wall</h2>
 
             {posts.length === 0 ? (
               <p className="text-gray-700">No posts yet. Be the first to launch one!</p>
@@ -242,7 +240,7 @@ export default function HomePage() {
                     <div
                       key={post.id}
                       className="overflow-hidden rounded-2xl bg-white/95 shadow"
-                      style={{ borderTop: `10px solid \${tagInfo.bg}` }}
+                      style={{ borderTop: `10px solid ${tagInfo.bg}` }}
                     >
                       <img
                         src={post.image_url}
