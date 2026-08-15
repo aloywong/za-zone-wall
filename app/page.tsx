@@ -103,8 +103,8 @@ export default function HomePage() {
         return;
       }
 
-      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-      const filePath = fileName;
+      const safeFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+      const filePath = `posts/${safeFileName}`;
 
       const { error: uploadError } = await supabase.storage
         .from('wall-images')
@@ -119,7 +119,21 @@ export default function HomePage() {
         .from('wall-images')
         .getPublicUrl(filePath);
 
-      const imageUrl = publicUrlData.publicUrl;
+      let imageUrl = publicUrlData?.publicUrl || '';
+
+      if (!imageUrl) {
+        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
+          .from('wall-images')
+          .createSignedUrl(filePath, 60 * 60 * 24);
+
+        if (signedUrlError) throw signedUrlError;
+
+        imageUrl = signedUrlData?.signedUrl || '';
+      }
+
+      if (!imageUrl) {
+        throw new Error('Could not generate a valid image URL. Check the bucket and storage policies.');
+      }
 
       const { error: insertError } = await supabase.from('posts').insert([
         {
