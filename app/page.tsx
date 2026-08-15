@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState } from 'react';
-import heic2any from 'heic2any';
 import { supabase } from '@/lib/supabase';
 
 const TAGS = [
@@ -81,7 +80,9 @@ export default function HomePage() {
       }
 
       if (mimeType.includes('heic') || mimeType.includes('heif')) {
-        const convertedBlob = await heic2any({
+        const heic2anyLib = (await import('heic2any')).default;
+
+        const convertedBlob = await heic2anyLib({
           blob: imageFile,
           toType: 'image/jpeg',
           quality: 0.9
