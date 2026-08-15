@@ -79,7 +79,9 @@ export default function HomePage() {
         return;
       }
 
-      if (mimeType.includes('heic') || mimeType.includes('heif')) {
+      if (mimeType === 'image/jpg' || mimeType === 'image/jpeg') {
+        fileExt = 'jpg';
+      } else if (mimeType.includes('heic') || mimeType.includes('heif')) {
         const heic2anyLib = (await import('heic2any')).default;
 
         const convertedBlob = await heic2anyLib({
@@ -94,8 +96,6 @@ export default function HomePage() {
         fileExt = 'jpg';
       } else if (mimeType.includes('png')) {
         fileExt = 'png';
-      } else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
-        fileExt = 'jpg';
       } else if (mimeType.includes('webp')) {
         fileExt = 'webp';
       } else {
@@ -165,7 +165,7 @@ export default function HomePage() {
 
       <div className="relative z-10 p-6">
         <div className="mx-auto max-w-6xl">
-          <h1 className="mb-6 text-4xl font-bold text-gray-900">Dear ZA</h1>
+          <h1 className="mb-6 text-4xl font-bold text-gray-900"></h1>
 
           <div className="mb-10 rounded-2xl bg-white/90 p-6 shadow">
             <h2 className="mb-4 text-3xl font-semibold text-gray-900">
