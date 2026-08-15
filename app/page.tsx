@@ -70,41 +70,45 @@ export default function HomePage() {
     try {
       setLoading(true);
 
-      let selectedFile: File | Blob = imageFile;
-      let mimeType = imageFile.type.toLowerCase();
-      let fileExt = 'jpg';
+      const file = imageFile;
+      if (!file) {
+        alert('Please upload an image.');
+        return;
+      }
+
+      let selectedFile: File | Blob = file;
+      let mimeType = (file.type || 'image/jpeg').toLowerCase();
+      let extension = 'jpg';
 
       if (!mimeType.startsWith('image/')) {
         alert('Please upload a valid image file.');
         return;
       }
 
-      if (mimeType === 'image/jpg' || mimeType === 'image/jpeg') {
-        fileExt = 'jpg';
+      if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
+        extension = 'jpg';
+      } else if (mimeType === 'image/png') {
+        extension = 'png';
+      } else if (mimeType === 'image/webp') {
+        extension = 'webp';
       } else if (mimeType.includes('heic') || mimeType.includes('heif')) {
         const heic2anyLib = (await import('heic2any')).default;
-
-        const convertedBlob = await heic2anyLib({
-          blob: imageFile,
+        const converted = await heic2anyLib({
+          blob: file,
           toType: 'image/jpeg',
           quality: 0.9
         });
 
-        const finalBlob = Array.isArray(convertedBlob) ? convertedBlob[0] : convertedBlob;
-        selectedFile = finalBlob ?? imageFile;
+        const blob = Array.isArray(converted) ? converted[0] : converted;
+        selectedFile = blob ?? file;
         mimeType = 'image/jpeg';
-        fileExt = 'jpg';
-      } else if (mimeType.includes('png')) {
-        fileExt = 'png';
-      } else if (mimeType.includes('webp')) {
-        fileExt = 'webp';
+        extension = 'jpg';
       } else {
         alert('Please upload a JPG, JPEG, PNG, WEBP, or HEIC image.');
         return;
       }
 
-      const safeFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
-      const filePath = `posts/${safeFileName}`;
+      const filePath = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from('wall-images')
