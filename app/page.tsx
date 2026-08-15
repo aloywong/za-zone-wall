@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import heic2any from 'heic2any';
 import { supabase } from '@/lib/supabase';
 
 const TAGS = [
@@ -70,24 +71,44 @@ export default function HomePage() {
     try {
       setLoading(true);
 
-      const selectedFile = imageFile;
+      let selectedFile: File | Blob = imageFile;
+      let mimeType = imageFile.type.toLowerCase();
+      let fileExt = 'jpg';
 
-      if (!selectedFile.type.startsWith('image/')) {
+      if (!mimeType.startsWith('image/')) {
         alert('Please upload a valid image file.');
         return;
       }
 
-      const fileNameFromInput = selectedFile.name || 'image.jpg';
-      const fileExt = (fileNameFromInput.split('.').pop() || 'jpg')
-        .replace(/[^a-zA-Z0-9]/g, '')
-        .toLowerCase();
-      const fileName = `${Date.now()}-${Math.random().toString(36).slice(2)}.${fileExt}`;
+      if (mimeType.includes('heic') || mimeType.includes('heif')) {
+        const convertedBlob = await heic2any({
+          blob: imageFile,
+          toType: 'image/jpeg',
+          quality: 0.9
+        });
+
+        const finalBlob = Array.isArray(convertedBlob) ? convertedBlob : convertedBlob;
+        selectedFile = finalBlob;
+        mimeType = 'image/jpeg';
+        fileExt = 'jpg';
+      } else if (mimeType.includes('png')) {
+        fileExt = 'png';
+      } else if (mimeType.includes('jpeg') || mimeType.includes('jpg')) {
+        fileExt = 'jpg';
+      } else if (mimeType.includes('webp')) {
+        fileExt = 'webp';
+      } else {
+        alert('Please upload a JPG, JPEG, PNG, WEBP, or HEIC image.');
+        return;
+      }
+
+      const fileName = `\${Date.now()}-\${Math.random().toString(36).slice(2)}.\${fileExt}`;
       const filePath = fileName;
 
       const { error: uploadError } = await supabase.storage
         .from('wall-images')
         .upload(filePath, selectedFile, {
-          contentType: selectedFile.type,
+          contentType: mimeType,
           upsert: false
         });
 
@@ -126,129 +147,131 @@ export default function HomePage() {
   }
 
   function getTagInfo(tagValue: string) {
-    return TAGS.find((t) => t.value === tagValue) ?? TAGS[0];
+    return TAGS.find((t) => t.value === tagValue) ?? TAGS;
   }
 
   return (
     <main className="relative min-h-screen overflow-hidden text-gray-900">
       <video
-         autoPlay
-         loop
-         muted
-         playsInline
-         className="absolute inset-0 h-full w-full object-cover"
-  >
-    <source src="/bg-video.mp4" type="video/mp4" />
-  </video>
+        autoPlay
+        loop
+        muted
+        playsInline
+        className="absolute inset-0 h-full w-full object-cover"
+      >
+        <source src="/bg-video.mp4" type="video/mp4" />
+      </video>
 
-  <div className="relative z-10 p-6">
-      <div className="mx-auto max-w-6xl">
-        <h1 className="mb-6 text-4xl font-bold text-gray-900"></h1>
+      <div className="absolute inset-0 bg-white/70" />
 
-        <div className="mb-10 rounded-2xl bg-white p-6 shadow">
-          <h2 className="mb-4 text-3xl font-semibold text-gray-900">
-            Launch a memory to the wall
-          </h2>
+      <div className="relative z-10 p-6">
+        <div className="mx-auto max-w-6xl">
+          <h1 className="mb-6 text-4xl font-bold text-gray-900">Dear ZA</h1>
 
-          <form onSubmit={handleSubmit} className="space-y-4">
-            <input
-              type="text"
-              placeholder="Enter your nickname"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900 placeholder-gray-400"
-            />
+          <div className="mb-10 rounded-2xl bg-white/90 p-6 shadow">
+            <h2 className="mb-4 text-3xl font-semibold text-gray-900">
+              Launch a memory to the wall
+            </h2>
 
-            <div>
-              <p className="mb-2 text-lg font-medium text-gray-900">Choose a category</p>
-              <div className="flex flex-col gap-3 md:flex-row">
-                {TAGS.map((item) => (
-                  <button
-                    type="button"
-                    key={item.value}
-                    onClick={() => setTag(item.value)}
-                    className="rounded-xl border p-4 text-left text-lg transition"
-                    style={{
-                      backgroundColor: tag === item.value ? item.bg : '#ffffff',
-                      color: tag === item.value ? item.text : '#111827',
-                      borderColor: item.bg
-                    }}
-                  >
-                    {item.label}
-                  </button>
-                ))}
+            <form onSubmit={handleSubmit} className="space-y-4">
+              <input
+                type="text"
+                placeholder="Enter your nickname"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900 placeholder-gray-400"
+              />
+
+              <div>
+                <p className="mb-2 text-lg font-medium text-gray-900">Choose a category</p>
+                <div className="flex flex-col gap-3 md:flex-row">
+                  {TAGS.map((item) => (
+                    <button
+                      type="button"
+                      key={item.value}
+                      onClick={() => setTag(item.value)}
+                      className="rounded-xl border p-4 text-left text-lg transition"
+                      style={{
+                        backgroundColor: tag === item.value ? item.bg : '#ffffff',
+                        color: tag === item.value ? item.text : '#111827',
+                        borderColor: item.bg
+                      }}
+                    >
+                      {item.label}
+                    </button>
+                  ))}
+                </div>
               </div>
-            </div>
 
-            <textarea
-              placeholder="Write your caption"
-              value={caption}
-              onChange={(e) => setCaption(e.target.value)}
-              className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900 placeholder-gray-400"
-              rows={4}
-            />
+              <textarea
+                placeholder="Write your caption"
+                value={caption}
+                onChange={(e) => setCaption(e.target.value)}
+                className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900 placeholder-gray-400"
+                rows={4}
+              />
 
-            <input
-              type="file"
-              accept="image/*"
-              onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
-              className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
-            />
+              <input
+                type="file"
+                accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif"
+                onChange={(e) => setImageFile(e.target.files?. ?? null)}
+                className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
+              />
 
-            <button
-              type="submit"
-              disabled={loading}
-              className="rounded-xl bg-black px-5 py-3 text-white disabled:opacity-50"
-            >
-              {loading ? 'Launching...' : 'Launch to Wall'}
-            </button>
-          </form>
-        </div>
+              <button
+                type="submit"
+                disabled={loading}
+                className="rounded-xl bg-black px-5 py-3 text-white disabled:opacity-50"
+              >
+                {loading ? 'Launching...' : 'Launch to Wall'}
+              </button>
+            </form>
+          </div>
 
-        <section>
-          <h2 className="mb-4 text-3xl font-semibold text-white">Wall</h2>
+          <section>
+            <h2 className="mb-4 text-3xl font-semibold text-gray-900">Wall</h2>
 
-          {posts.length === 0 ? (
-            <p className="text-gray-500">No posts yet. Be the first to launch one!</p>
-          ) : (
-            <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-              {posts.map((post) => {
-                const tagInfo = getTagInfo(post.tag);
+            {posts.length === 0 ? (
+              <p className="text-gray-700">No posts yet. Be the first to launch one!</p>
+            ) : (
+              <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
+                {posts.map((post) => {
+                  const tagInfo = getTagInfo(post.tag);
 
-                return (
-                  <div
-                    key={post.id}
-                    className="overflow-hidden rounded-2xl bg-white shadow"
-                    style={{ borderTop: `10px solid ${tagInfo.bg}` }}
-                  >
-                    <img
-                      src={post.image_url}
-                      alt={post.caption}
-                      className="h-64 w-full object-cover"
-                    />
+                  return (
+                    <div
+                      key={post.id}
+                      className="overflow-hidden rounded-2xl bg-white/95 shadow"
+                      style={{ borderTop: `10px solid \${tagInfo.bg}` }}
+                    >
+                      <img
+                        src={post.image_url}
+                        alt={post.caption}
+                        className="h-64 w-full object-cover"
+                      />
 
-                    <div className="p-4">
-                      <span
-                        className="mb-3 inline-block rounded-full px-3 py-1 text-sm font-semibold"
-                        style={{
-                          backgroundColor: tagInfo.bg,
-                          color: tagInfo.text
-                        }}
-                      >
-                        {tagInfo.label}
-                      </span>
+                      <div className="p-4">
+                        <span
+                          className="mb-3 inline-block rounded-full px-3 py-1 text-sm font-semibold"
+                          style={{
+                            backgroundColor: tagInfo.bg,
+                            color: tagInfo.text
+                          }}
+                        >
+                          {tagInfo.label}
+                        </span>
 
-                      <p className="mb-2 text-gray-800">{post.caption}</p>
-                      <p className="text-sm text-gray-500">by {post.username}</p>
+                        <p className="mb-2 text-gray-800">{post.caption}</p>
+                        <p className="text-sm text-gray-500">by {post.username}</p>
+                      </div>
                     </div>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+                  );
+                })}
+              </div>
+            )}
+          </section>
+        </div>
       </div>
-    </div>
-  </main>
+    </main>
   );
 }
