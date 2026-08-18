@@ -317,7 +317,9 @@ export default function HomePage() {
                       {isVideo ? (
                         <video
                           src={mediaSource}
-                          controls
+                          autoPlay
+                          loop
+                          muted
                           playsInline
                           className="h-64 w-full object-cover"
                         />
