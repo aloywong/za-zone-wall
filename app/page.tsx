@@ -98,9 +98,19 @@ export default function HomePage() {
 
       let selectedFile: File | Blob = file;
       let contentType = rawType;
-      let extension = ext || (mediaType === 'video' ? 'mp4' : 'jpg');
+      
+      // 1. Sanitize file name to avoid invalid characters in path
+      const safeName = file.name
+        ? file.name.replace(/[^a-zA-Z0-9.-]/g, '_').toLowerCase()
+        : `upload_${Date.now()}`;
 
-      // Convert HEIC/HEIF images (common on iOS) to JPEG
+      // 2. Ensure extension is ALWAYS valid and not empty
+      let extension = ext;
+      if (!extension || extension.length === 0) {
+        extension = mediaType === 'video' ? 'mp4' : 'jpg';
+      }
+
+      // Convert HEIC/HEIF images (iOS photos) to JPEG
       if (
         rawType.includes('heic') ||
         rawType.includes('heif') ||
@@ -122,17 +132,20 @@ export default function HomePage() {
             extension = 'jpg';
           }
         } catch (heicErr) {
-          console.warn('HEIC conversion skipped or failed, uploading original file:', heicErr);
+          console.warn('HEIC conversion skipped, uploading original file:', heicErr);
           contentType = contentType || 'image/heic';
         }
       }
 
-      // Ensure a fallback content-type if browser didn't supply one
+      // 3. Fallback Content-Type if browser sends empty string
       if (!contentType) {
         contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
       }
 
-      const filePath = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
+      // 4. Construct a clean, sanitized storage path
+      // Resulting format: posts/1718000000000-xyz123_my_photo.jpg
+      const cleanFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}_${safeName}`;
+      const filePath = `posts/${cleanFileName}`;
 
       // Upload file to Supabase Storage bucket
       const { error: uploadError } = await supabase.storage
@@ -142,7 +155,10 @@ export default function HomePage() {
           upsert: false,
         });
 
-      if (uploadError) throw uploadError;
+      if (uploadError) {
+        console.error('Supabase Upload Error:', uploadError);
+        throw uploadError;
+      }
 
       // Get public URL
       const { data: publicUrlData } = supabase.storage
@@ -172,7 +188,7 @@ export default function HomePage() {
           caption,
           media_url: mediaUrl,
           media_type: mediaType,
-          image_url: mediaUrl, // Kept for backward compatibility if your DB still uses image_url
+          image_url: mediaUrl,
         },
       ]);
 
@@ -192,6 +208,7 @@ export default function HomePage() {
       setLoading(false);
     }
   }
+
 
   function getTagInfo(tagValue: string) {
     return TAGS.find((t) => t.value === tagValue) ?? TAGS[0];
