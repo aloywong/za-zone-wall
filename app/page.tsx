@@ -58,6 +58,20 @@ export default function HomePage() {
 
   useEffect(() => {
     fetchPosts();
+    const channel = supabase
+      .channel('posts-realtime')
+      .on(
+        'postgres_changes',
+        { event: 'INSERT', schema: 'public', table: 'posts' },
+        (payload) => {
+          setPosts((prev) => [payload.new as Post, ...prev]);
+        }
+      )
+      .subscribe();
+
+    return () => {
+      supabase.removeChannel(channel);
+    };
   }, []);
 
   function getFileInfo(file: File) {
@@ -217,7 +231,7 @@ export default function HomePage() {
         loop
         muted
         playsInline
-        className="absolute inset-0 h-full w-full object-cover"
+        className="fixed inset-0 h-full w-full object-cover -z-10"
       >
         <source src="/bg-video.mp4" type="video/mp4" />
       </video>
@@ -226,7 +240,7 @@ export default function HomePage() {
         <div className="mx-auto max-w-6xl">
           <div className="mb-10 rounded-2xl bg-white/90 p-6 shadow">
             <h2 className="mb-4 text-3xl font-semibold text-gray-900">
-              Launch a memory to the wall
+              Launch to the wall!
             </h2>
 
             <form onSubmit={handleSubmit} className="space-y-4">
@@ -288,7 +302,7 @@ export default function HomePage() {
                 disabled={loading}
                 className="rounded-xl bg-black px-5 py-3 text-white disabled:opacity-50"
               >
-                {loading ? 'Launching...' : 'Launch to Wall'}
+                {loading ? 'Launching...' : 'Launch to Wall!'}
               </button>
             </form>
           </div>
