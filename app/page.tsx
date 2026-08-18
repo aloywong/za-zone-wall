@@ -8,20 +8,20 @@ const TAGS = [
     value: 'zone_mate',
     label: 'Rave & Brag about a Zone-mate',
     bg: '#FACC15',
-    text: '#222222'
+    text: '#222222',
   },
   {
     value: 'dreams',
     label: 'Dreams for ZA Zone',
     bg: '#EF4444',
-    text: '#FFFFFF'
+    text: '#FFFFFF',
   },
   {
     value: 'memory',
     label: 'Your favourite ZA Zone memory',
     bg: '#3B82F6',
-    text: '#FFFFFF'
-  }
+    text: '#FFFFFF',
+  },
 ];
 
 type Post = {
@@ -29,7 +29,8 @@ type Post = {
   username: string;
   tag: string;
   caption: string;
-  image_url: string;
+  media_url: string;
+  media_type: 'image' | 'video';
   created_at: string;
 };
 
@@ -37,7 +38,7 @@ export default function HomePage() {
   const [username, setUsername] = useState('');
   const [tag, setTag] = useState('');
   const [caption, setCaption] = useState('');
-  const [imageFile, setImageFile] = useState<File | null>(null);
+  const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -48,7 +49,7 @@ export default function HomePage() {
       .order('created_at', { ascending: false });
 
     if (error) {
-      console.error(error);
+      console.error('Error fetching posts:', error);
       return;
     }
 
@@ -59,93 +60,120 @@ export default function HomePage() {
     fetchPosts();
   }, []);
 
+  // Helper function to resolve file metadata across iOS and Android
+  function getFileInfo(file: File) {
+    const fileName = file.name.toLowerCase();
+    const rawType = (file.type || '').toLowerCase();
+
+    // Extract extension from file name (fallback when iOS returns file.type = "")
+    const extMatch = fileName.match(/\.([a-z0-9]+)$/);
+    const ext = extMatch ? extMatch[1] : '';
+
+    const isVideoExt = ['mp4', 'mov', 'webm', 'm4v', 'avi', '3gp', 'mkv'].includes(ext);
+    const isImageExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif'].includes(ext);
+
+    let mediaType: 'image' | 'video' = 'image';
+    if (rawType.startsWith('video/') || isVideoExt) {
+      mediaType = 'video';
+    } else if (rawType.startsWith('image/') || isImageExt) {
+      mediaType = 'image';
+    }
+
+    return { ext, rawType, mediaType };
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
-    if (!username || !tag || !caption || !imageFile) {
-      alert('Please fill in all fields, including an image.');
+    if (!username || !tag || !caption || !mediaFile) {
+      alert('Please fill in all fields, including a photo or video.');
       return;
     }
 
     try {
       setLoading(true);
 
-      const file = imageFile;
-      if (!file) {
-        alert('Please upload an image.');
-        return;
-      }
+      const file = mediaFile;
+      const { ext, rawType, mediaType } = getFileInfo(file);
 
       let selectedFile: File | Blob = file;
-      let mimeType = (file.type || 'image/jpeg').toLowerCase();
-      let extension = 'jpg';
+      let contentType = rawType;
+      let extension = ext || (mediaType === 'video' ? 'mp4' : 'jpg');
 
-      if (!mimeType.startsWith('image/')) {
-        alert('Please upload a valid image file.');
-        return;
+      // Convert HEIC/HEIF images (common on iOS) to JPEG
+      if (
+        rawType.includes('heic') ||
+        rawType.includes('heif') ||
+        ext === 'heic' ||
+        ext === 'heif'
+      ) {
+        try {
+          const heic2anyLib = (await import('heic2any')).default;
+          const converted = await heic2anyLib({
+            blob: file,
+            toType: 'image/jpeg',
+            quality: 0.85,
+          });
+
+          const blob = Array.isArray(converted) ? converted[0] : converted;
+          if (blob) {
+            selectedFile = blob;
+            contentType = 'image/jpeg';
+            extension = 'jpg';
+          }
+        } catch (heicErr) {
+          console.warn('HEIC conversion skipped or failed, uploading original file:', heicErr);
+          contentType = contentType || 'image/heic';
+        }
       }
 
-      if (mimeType === 'image/jpeg' || mimeType === 'image/jpg') {
-        extension = 'jpg';
-      } else if (mimeType === 'image/png') {
-        extension = 'png';
-      } else if (mimeType === 'image/webp') {
-        extension = 'webp';
-      } else if (mimeType.includes('heic') || mimeType.includes('heif')) {
-        const heic2anyLib = (await import('heic2any')).default;
-        const converted = await heic2anyLib({
-          blob: file,
-          toType: 'image/jpeg',
-          quality: 0.9
-        });
-
-        const blob = Array.isArray(converted) ? converted[0] : converted;
-        selectedFile = blob ?? file;
-        mimeType = 'image/jpeg';
-        extension = 'jpg';
-      } else {
-        alert('Please upload a JPG, JPEG, PNG, WEBP, or HEIC image.');
-        return;
+      // Ensure a fallback content-type if browser didn't supply one
+      if (!contentType) {
+        contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
       }
 
       const filePath = `posts/${Date.now()}-${Math.random().toString(36).slice(2)}.${extension}`;
 
+      // Upload file to Supabase Storage bucket
       const { error: uploadError } = await supabase.storage
         .from('wall-images')
         .upload(filePath, selectedFile, {
-          contentType: mimeType,
-          upsert: false
+          contentType: contentType,
+          upsert: false,
         });
 
       if (uploadError) throw uploadError;
 
+      // Get public URL
       const { data: publicUrlData } = supabase.storage
         .from('wall-images')
         .getPublicUrl(filePath);
 
-      let imageUrl = publicUrlData?.publicUrl || '';
+      let mediaUrl = publicUrlData?.publicUrl || '';
 
-      if (!imageUrl) {
+      if (!mediaUrl) {
         const { data: signedUrlData, error: signedUrlError } = await supabase.storage
           .from('wall-images')
-          .createSignedUrl(filePath, 60 * 60 * 24);
+          .createSignedUrl(filePath, 60 * 60 * 24 * 365);
 
         if (signedUrlError) throw signedUrlError;
-
-        imageUrl = signedUrlData?.signedUrl || '';
+        mediaUrl = signedUrlData?.signedUrl || '';
       }
 
-      if (!imageUrl) {
-        throw new Error('Could not generate a valid image URL. Check the bucket and storage policies.');
+      if (!mediaUrl) {
+        throw new Error('Could not generate a valid media URL.');
       }
 
+      // Insert post into Supabase table
       const { error: insertError } = await supabase.from('posts').insert([
         {
           username,
           tag,
           caption,
-          image_url: imageUrl
-        }
+          media_url: mediaUrl,
+          media_type: mediaType,
+          image_url: mediaUrl, // Kept for backward compatibility if your DB still uses image_url
+        },
       ]);
 
       if (insertError) throw insertError;
@@ -153,7 +181,7 @@ export default function HomePage() {
       setUsername('');
       setTag('');
       setCaption('');
-      setImageFile(null);
+      setMediaFile(null);
 
       await fetchPosts();
       alert('Uploaded successfully!');
@@ -183,8 +211,6 @@ export default function HomePage() {
 
       <div className="relative z-10 p-6">
         <div className="mx-auto max-w-6xl">
-          <h1 className="mb-6 text-4xl font-bold text-gray-900"></h1>
-
           <div className="mb-10 rounded-2xl bg-white/90 p-6 shadow">
             <h2 className="mb-4 text-3xl font-semibold text-gray-900">
               Launch a memory to the wall
@@ -211,7 +237,7 @@ export default function HomePage() {
                       style={{
                         backgroundColor: tag === item.value ? item.bg : '#ffffff',
                         color: tag === item.value ? item.text : '#111827',
-                        borderColor: item.bg
+                        borderColor: item.bg,
                       }}
                     >
                       {item.label}
@@ -228,12 +254,17 @@ export default function HomePage() {
                 rows={4}
               />
 
-              <input
-                type="file"
-                accept="image/jpeg,image/jpg,image/png,image/webp,image/heic,image/heif"
-                onChange={(e) => setImageFile(e.target.files?.[0] ?? null)}
-                className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
-              />
+              <div>
+                <label className="mb-1 block text-sm font-medium text-gray-700">
+                  Upload Photo or Video (JPG, PNG, HEIC, MP4, MOV, WEBM)
+                </label>
+                <input
+                  type="file"
+                  accept="image/*,video/*,.heic,.heif,.mov,.mp4,.webm"
+                  onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
+                  className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
+                />
+              </div>
 
               <button
                 type="submit"
@@ -254,6 +285,12 @@ export default function HomePage() {
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {posts.map((post) => {
                   const tagInfo = getTagInfo(post.tag);
+                  const mediaSource = post.media_url || (post as any).image_url;
+                  
+                  // Detect video from type or file extension
+                  const isVideo =
+                    post.media_type === 'video' ||
+                    /\.(mp4|mov|webm|m4v|3gp)(\?.*)?$/i.test(mediaSource || '');
 
                   return (
                     <div
@@ -261,18 +298,27 @@ export default function HomePage() {
                       className="overflow-hidden rounded-2xl bg-white/95 shadow"
                       style={{ borderTop: `10px solid ${tagInfo.bg}` }}
                     >
-                      <img
-                        src={post.image_url}
-                        alt={post.caption}
-                        className="h-64 w-full object-cover"
-                      />
+                      {isVideo ? (
+                        <video
+                          src={mediaSource}
+                          controls
+                          playsInline
+                          className="h-64 w-full object-cover"
+                        />
+                      ) : (
+                        <img
+                          src={mediaSource}
+                          alt={post.caption}
+                          className="h-64 w-full object-cover"
+                        />
+                      )}
 
                       <div className="p-4">
                         <span
                           className="mb-3 inline-block rounded-full px-3 py-1 text-sm font-semibold"
                           style={{
                             backgroundColor: tagInfo.bg,
-                            color: tagInfo.text
+                            color: tagInfo.text,
                           }}
                         >
                           {tagInfo.label}
