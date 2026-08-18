@@ -272,17 +272,17 @@ export default function HomePage() {
               />
 
               <div>
-                <label className="mb-1 block text-sm font-medium text-gray-700">
+                <label htmlFor="media-upload" className="mb-1 block text-sm font-medium text-gray-700">
                   Upload Photo or Video (JPG, PNG, HEIC, MP4, MOV, WEBM)
                 </label>
-                <input
-                  type="file"
-                  accept="image/*,video/*,.heic,.heif,.mov,.mp4,.webm"
+                <input 
+                  id="media-upload"
+                  type="file" 
+                  accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.webm,image/*,video/*"
                   onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
-                  className="w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
+                  className="block w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
                 />
               </div>
-
               <button
                 type="submit"
                 disabled={loading}
