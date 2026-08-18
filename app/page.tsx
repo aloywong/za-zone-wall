@@ -64,8 +64,8 @@ export default function HomePage() {
     const fileName = (file.name || '').toLowerCase();
     const rawType = (file.type || '').toLowerCase();
 
-    const extMatch = fileName.match(/\.([a-z0-9]+)\$/);
-    const ext = extMatch ? extMatch : '';
+    const extMatch = fileName.match(/\.([a-z0-9]+)$/);
+    const ext = extMatch ? extMatch[1] : '';
 
     const isVideoExt = ['mp4', 'mov', 'webm', 'm4v', 'avi', '3gp', 'mkv'].includes(ext);
     const isImageExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif'].includes(ext);
@@ -126,7 +126,7 @@ export default function HomePage() {
             quality: 0.85,
           });
 
-          const blob = Array.isArray(converted) ? converted : converted;
+          const blob = Array.isArray(converted) ? converted[0] : converted;
 
           if (!blob) {
             throw new Error('HEIC image conversion failed.');
@@ -207,7 +207,7 @@ export default function HomePage() {
   }
 
   function getTagInfo(tagValue: string) {
-    return TAGS.find((t) => t.value === tagValue) ?? TAGS;
+    return TAGS.find((t) => t.value === tagValue) ?? TAGS[0];
   }
 
   return (
@@ -278,7 +278,7 @@ export default function HomePage() {
                   id="media-upload"
                   type="file"
                   accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.webm,image/*,video/*"
-                  onChange={(e) => setMediaFile(e.target.files?. ?? null)}
+                  onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
                   className="block w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
                 />
               </div>
