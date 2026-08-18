@@ -53,26 +53,25 @@ export default function HomePage() {
       return;
     }
 
-    setPosts(data || []);
+    setPosts((data as Post[]) || []);
   }
 
   useEffect(() => {
     fetchPosts();
   }, []);
 
-  // Helper function to resolve file metadata across iOS and Android
   function getFileInfo(file: File) {
-    const fileName = file.name.toLowerCase();
+    const fileName = (file.name || '').toLowerCase();
     const rawType = (file.type || '').toLowerCase();
 
-    // Extract extension from file name (fallback when iOS returns file.type = "")
-    const extMatch = fileName.match(/\.([a-z0-9]+)$/);
-    const ext = extMatch ? extMatch[1] : '';
+    const extMatch = fileName.match(/\.([a-z0-9]+)\$/);
+    const ext = extMatch ? extMatch : '';
 
     const isVideoExt = ['mp4', 'mov', 'webm', 'm4v', 'avi', '3gp', 'mkv'].includes(ext);
     const isImageExt = ['jpg', 'jpeg', 'png', 'webp', 'heic', 'heif', 'gif'].includes(ext);
 
     let mediaType: 'image' | 'video' = 'image';
+
     if (rawType.startsWith('video/') || isVideoExt) {
       mediaType = 'video';
     } else if (rawType.startsWith('image/') || isImageExt) {
@@ -98,60 +97,67 @@ export default function HomePage() {
 
       let selectedFile: File | Blob = file;
       let contentType = rawType;
-      
-      // 1. Sanitize file name to avoid invalid characters in path
-      const safeName = file.name
-        ? file.name.replace(/[^a-zA-Z0-9.-]/g, '_').toLowerCase()
-        : `upload_${Date.now()}`;
+      let extension = 'jpg';
 
-      // 2. Ensure extension is ALWAYS valid and not empty
-      let extension = ext;
-      if (!extension || extension.length === 0) {
-        extension = mediaType === 'video' ? 'mp4' : 'jpg';
-      }
+      if (mediaType === 'video') {
+        if (rawType.includes('webm') || ext === 'webm') {
+          extension = 'webm';
+          contentType = contentType || 'video/webm';
+        } else if (rawType.includes('quicktime') || ext === 'mov') {
+          extension = 'mov';
+          contentType = contentType || 'video/quicktime';
+        } else {
+          extension = 'mp4';
+          contentType = contentType || 'video/mp4';
+        }
+      } else {
+        const isHeic =
+          rawType.includes('heic') ||
+          rawType.includes('heif') ||
+          ext === 'heic' ||
+          ext === 'heif';
 
-      // Convert HEIC/HEIF images (iOS photos) to JPEG
-      if (
-        rawType.includes('heic') ||
-        rawType.includes('heif') ||
-        ext === 'heic' ||
-        ext === 'heif'
-      ) {
-        try {
+        if (isHeic) {
           const heic2anyLib = (await import('heic2any')).default;
+
           const converted = await heic2anyLib({
             blob: file,
             toType: 'image/jpeg',
             quality: 0.85,
           });
 
-          const blob = Array.isArray(converted) ? converted[0] : converted;
-          if (blob) {
-            selectedFile = blob;
-            contentType = 'image/jpeg';
-            extension = 'jpg';
+          const blob = Array.isArray(converted) ? converted : converted;
+
+          if (!blob) {
+            throw new Error('HEIC image conversion failed.');
           }
-        } catch (heicErr) {
-          console.warn('HEIC conversion skipped, uploading original file:', heicErr);
-          contentType = contentType || 'image/heic';
+
+          selectedFile = blob;
+          contentType = 'image/jpeg';
+          extension = 'jpg';
+        } else if (rawType.includes('png') || ext === 'png') {
+          contentType = 'image/png';
+          extension = 'png';
+        } else if (rawType.includes('webp') || ext === 'webp') {
+          contentType = 'image/webp';
+          extension = 'webp';
+        } else {
+          contentType = 'image/jpeg';
+          extension = 'jpg';
         }
       }
 
-      // 3. Fallback Content-Type if browser sends empty string
       if (!contentType) {
         contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
       }
 
-      // 4. Construct a clean, sanitized storage path
-      // Resulting format: posts/1718000000000-xyz123_my_photo.jpg
-      const cleanFileName = `${Date.now()}-${Math.random().toString(36).slice(2)}_${safeName}`;
-      const filePath = `posts/${cleanFileName}`;
+      const uniqueId = `\${Date.now()}-\${Math.random().toString(36).slice(2)}`;
+      const filePath = `posts/\${uniqueId}.\${extension}`;
 
-      // Upload file to Supabase Storage bucket
       const { error: uploadError } = await supabase.storage
         .from('wall-images')
         .upload(filePath, selectedFile, {
-          contentType: contentType,
+          contentType,
           upsert: false,
         });
 
@@ -160,27 +166,16 @@ export default function HomePage() {
         throw uploadError;
       }
 
-      // Get public URL
       const { data: publicUrlData } = supabase.storage
         .from('wall-images')
         .getPublicUrl(filePath);
 
-      let mediaUrl = publicUrlData?.publicUrl || '';
-
-      if (!mediaUrl) {
-        const { data: signedUrlData, error: signedUrlError } = await supabase.storage
-          .from('wall-images')
-          .createSignedUrl(filePath, 60 * 60 * 24 * 365);
-
-        if (signedUrlError) throw signedUrlError;
-        mediaUrl = signedUrlData?.signedUrl || '';
-      }
+      const mediaUrl = publicUrlData?.publicUrl || '';
 
       if (!mediaUrl) {
         throw new Error('Could not generate a valid media URL.');
       }
 
-      // Insert post into Supabase table
       const { error: insertError } = await supabase.from('posts').insert([
         {
           username,
@@ -188,11 +183,13 @@ export default function HomePage() {
           caption,
           media_url: mediaUrl,
           media_type: mediaType,
-          image_url: mediaUrl,
         },
       ]);
 
-      if (insertError) throw insertError;
+      if (insertError) {
+        console.error('Supabase Insert Error:', insertError);
+        throw insertError;
+      }
 
       setUsername('');
       setTag('');
@@ -209,9 +206,8 @@ export default function HomePage() {
     }
   }
 
-
   function getTagInfo(tagValue: string) {
-    return TAGS.find((t) => t.value === tagValue) ?? TAGS[0];
+    return TAGS.find((t) => t.value === tagValue) ?? TAGS;
   }
 
   return (
@@ -272,17 +268,21 @@ export default function HomePage() {
               />
 
               <div>
-                <label htmlFor="media-upload" className="mb-1 block text-sm font-medium text-gray-700">
+                <label
+                  htmlFor="media-upload"
+                  className="mb-1 block text-sm font-medium text-gray-700"
+                >
                   Upload Photo or Video (JPG, PNG, HEIC, MP4, MOV, WEBM)
                 </label>
-                <input 
+                <input
                   id="media-upload"
-                  type="file" 
+                  type="file"
                   accept=".jpg,.jpeg,.png,.webp,.heic,.heif,.mp4,.mov,.webm,image/*,video/*"
-                  onChange={(e) => setMediaFile(e.target.files?.[0] ?? null)}
+                  onChange={(e) => setMediaFile(e.target.files?. ?? null)}
                   className="block w-full rounded-lg border border-gray-300 bg-white p-3 text-gray-900"
                 />
               </div>
+
               <button
                 type="submit"
                 disabled={loading}
@@ -302,18 +302,17 @@ export default function HomePage() {
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {posts.map((post) => {
                   const tagInfo = getTagInfo(post.tag);
-                  const mediaSource = post.media_url || (post as any).image_url;
-                  
-                  // Detect video from type or file extension
+                  const mediaSource = post.media_url;
+
                   const isVideo =
                     post.media_type === 'video' ||
-                    /\.(mp4|mov|webm|m4v|3gp)(\?.*)?$/i.test(mediaSource || '');
+                    /\.(mp4|mov|webm|m4v|3gp)(\?.*)?\$/i.test(mediaSource || '');
 
                   return (
                     <div
                       key={post.id}
                       className="overflow-hidden rounded-2xl bg-white/95 shadow"
-                      style={{ borderTop: `10px solid ${tagInfo.bg}` }}
+                      style={{ borderTop: `10px solid \${tagInfo.bg}` }}
                     >
                       {isVideo ? (
                         <video
