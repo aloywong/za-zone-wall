@@ -151,8 +151,8 @@ export default function HomePage() {
         contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
       }
 
-      const uniqueId = `\${Date.now()}-\${Math.random().toString(36).slice(2)}`;
-      const filePath = `posts/\${uniqueId}.\${extension}`;
+      const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+      const filePath = `posts/${uniqueId}.${extension}`;
 
       const { error: uploadError } = await supabase.storage
         .from('wall-images')
@@ -306,13 +306,13 @@ export default function HomePage() {
 
                   const isVideo =
                     post.media_type === 'video' ||
-                    /\.(mp4|mov|webm|m4v|3gp)(\?.*)?\$/i.test(mediaSource || '');
+                    /\.(mp4|mov|webm|m4v|3gp)(\?.*)?$/i.test(mediaSource || '');
 
                   return (
                     <div
                       key={post.id}
                       className="overflow-hidden rounded-2xl bg-white/95 shadow"
-                      style={{ borderTop: `10px solid \${tagInfo.bg}` }}
+                      style={{ borderTop: `10px solid ${tagInfo.bg}` }}
                     >
                       {isVideo ? (
                         <video
