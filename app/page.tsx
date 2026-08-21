@@ -29,8 +29,8 @@ type Post = {
   username: string;
   tag: string;
   caption: string;
-  media_url: string;
-  media_type: 'image' | 'video';
+  media_path: string | null;
+  media_type: 'image' | 'video' | null;
   created_at: string;
 };
 
@@ -41,6 +41,7 @@ export default function HomePage() {
   const [mediaFile, setMediaFile] = useState<File | null>(null);
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
 
   async function fetchPosts() {
     const { data, error } = await supabase
@@ -54,6 +55,20 @@ export default function HomePage() {
     }
 
     setPosts((data as Post[]) || []);
+  }
+
+  async function fetchSignedUrls(paths: string[]) {
+    if (paths.length === 0) return;
+
+    const res = await fetch('/api/signed-url', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ paths }),
+    });
+
+    const { urls } = await res.json();
+
+    setSignedUrls((prev) => ({ ...prev, ...urls }));
   }
 
   useEffect(() => {
@@ -73,6 +88,16 @@ export default function HomePage() {
       supabase.removeChannel(channel);
     };
   }, []);
+
+  useEffect(() => {
+  const pathsNeeded = posts
+    .map((p) => p.media_path)
+    .filter((path): path is string => !!path && !signedUrls[path]);
+
+  if (pathsNeeded.length > 0) {
+    fetchSignedUrls(pathsNeeded);
+  }
+  }, [posts, signedUrls]);
 
   function getFileInfo(file: File) {
     const fileName = (file.name || '').toLowerCase();
@@ -95,131 +120,127 @@ export default function HomePage() {
     return { ext, rawType, mediaType };
   }
 
-  async function handleSubmit(e: React.FormEvent) {
-    e.preventDefault();
+    async function handleSubmit(e: React.FormEvent) {
+      e.preventDefault();
 
-    if (!username || !tag || !caption || !mediaFile) {
-      alert('Please fill in all fields, including a photo or video.');
-      return;
-    }
+      if (!username || !tag || !caption) {
+        alert('Please fill in your nickname, category, and caption.');
+        return;
+      }
 
-    try {
-      setLoading(true);
+      try {
+        setLoading(true);
 
-      const file = mediaFile;
-      const { ext, rawType, mediaType } = getFileInfo(file);
+        let mediaPath = '';
+        let mediaType: 'image' | 'video' = 'image';
 
-      let selectedFile: File | Blob = file;
-      let contentType = rawType;
-      let extension = 'jpg';
+        if (mediaFile) {
+          const file = mediaFile;
+          const { ext, rawType, mediaType: detectedType } = getFileInfo(file);
+          mediaType = detectedType;
 
-      if (mediaType === 'video') {
-        if (rawType.includes('webm') || ext === 'webm') {
-          extension = 'webm';
-          contentType = contentType || 'video/webm';
-        } else if (rawType.includes('quicktime') || ext === 'mov') {
-          extension = 'mov';
-          contentType = contentType || 'video/quicktime';
-        } else {
-          extension = 'mp4';
-          contentType = contentType || 'video/mp4';
-        }
-      } else {
-        const isHeic =
-          rawType.includes('heic') ||
-          rawType.includes('heif') ||
-          ext === 'heic' ||
-          ext === 'heif';
+          let selectedFile: File | Blob = file;
+          let contentType = rawType;
+          let extension = 'jpg';
 
-        if (isHeic) {
-          const heic2anyLib = (await import('heic2any')).default;
+          if (mediaType === 'video') {
+            if (rawType.includes('webm') || ext === 'webm') {
+              extension = 'webm';
+              contentType = contentType || 'video/webm';
+            } else if (rawType.includes('quicktime') || ext === 'mov') {
+              extension = 'mov';
+              contentType = contentType || 'video/quicktime';
+            } else {
+              extension = 'mp4';
+              contentType = contentType || 'video/mp4';
+            }
+          } else {
+            const isHeic =
+              rawType.includes('heic') ||
+              rawType.includes('heif') ||
+              ext === 'heic' ||
+              ext === 'heif';
 
-          const converted = await heic2anyLib({
-            blob: file,
-            toType: 'image/jpeg',
-            quality: 0.85,
-          });
+            if (isHeic) {
+              const heic2anyLib = (await import('heic2any')).default;
 
-          const blob = Array.isArray(converted) ? converted[0] : converted;
+              const converted = await heic2anyLib({
+                blob: file,
+                toType: 'image/jpeg',
+                quality: 0.85,
+              });
 
-          if (!blob) {
-            throw new Error('HEIC image conversion failed.');
+              const blob = Array.isArray(converted) ? converted[0] : converted;
+
+              if (!blob) {
+                throw new Error('HEIC image conversion failed.');
+              }
+
+              selectedFile = blob;
+              contentType = 'image/jpeg';
+              extension = 'jpg';
+            } else if (rawType.includes('png') || ext === 'png') {
+              contentType = 'image/png';
+              extension = 'png';
+            } else if (rawType.includes('webp') || ext === 'webp') {
+              contentType = 'image/webp';
+              extension = 'webp';
+            } else {
+              contentType = 'image/jpeg';
+              extension = 'jpg';
+            }
           }
 
-          selectedFile = blob;
-          contentType = 'image/jpeg';
-          extension = 'jpg';
-        } else if (rawType.includes('png') || ext === 'png') {
-          contentType = 'image/png';
-          extension = 'png';
-        } else if (rawType.includes('webp') || ext === 'webp') {
-          contentType = 'image/webp';
-          extension = 'webp';
-        } else {
-          contentType = 'image/jpeg';
-          extension = 'jpg';
+          if (!contentType) {
+            contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
+          }
+
+          const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+          const filePath = `posts/${uniqueId}.${extension}`;
+
+          const { error: uploadError } = await supabase.storage
+            .from('wall-images')
+            .upload(filePath, selectedFile, {
+              contentType,
+              upsert: false,
+            });
+
+          if (uploadError) {
+            console.error('Supabase Upload Error:', uploadError);
+            throw uploadError;
+          }
+
+          mediaPath = filePath;
         }
+
+        const { error: insertError } = await supabase.from('posts').insert([
+          {
+            username,
+            tag,
+            caption,
+            media_path: mediaPath || null,
+            media_type: mediaFile ? mediaType : null,
+          },
+        ]);
+
+        if (insertError) {
+          console.error('Supabase Insert Error:', insertError);
+          throw insertError;
+        }
+
+        setUsername('');
+        setTag('');
+        setCaption('');
+        setMediaFile(null);
+
+        alert('Uploaded successfully!');
+      } catch (err: any) {
+        console.error(err);
+        alert(err?.message || 'Something went wrong while uploading.');
+      } finally {
+        setLoading(false);
       }
-
-      if (!contentType) {
-        contentType = mediaType === 'video' ? 'video/mp4' : 'image/jpeg';
-      }
-
-      const uniqueId = `${Date.now()}-${Math.random().toString(36).slice(2)}`;
-      const filePath = `posts/${uniqueId}.${extension}`;
-
-      const { error: uploadError } = await supabase.storage
-        .from('wall-images')
-        .upload(filePath, selectedFile, {
-          contentType,
-          upsert: false,
-        });
-
-      if (uploadError) {
-        console.error('Supabase Upload Error:', uploadError);
-        throw uploadError;
-      }
-
-      const { data: publicUrlData } = supabase.storage
-        .from('wall-images')
-        .getPublicUrl(filePath);
-
-      const mediaUrl = publicUrlData?.publicUrl || '';
-
-      if (!mediaUrl) {
-        throw new Error('Could not generate a valid media URL.');
-      }
-
-      const { error: insertError } = await supabase.from('posts').insert([
-        {
-          username,
-          tag,
-          caption,
-          media_url: mediaUrl,
-          media_type: mediaType,
-        },
-      ]);
-
-      if (insertError) {
-        console.error('Supabase Insert Error:', insertError);
-        throw insertError;
-      }
-
-      setUsername('');
-      setTag('');
-      setCaption('');
-      setMediaFile(null);
-
-      await fetchPosts();
-      alert('Uploaded successfully!');
-    } catch (err: any) {
-      console.error(err);
-      alert(err?.message || 'Something went wrong while uploading.');
-    } finally {
-      setLoading(false);
-    }
-  }
-
+} 
   function getTagInfo(tagValue: string) {
     return TAGS.find((t) => t.value === tagValue) ?? TAGS[0];
   }
@@ -231,12 +252,13 @@ export default function HomePage() {
         loop
         muted
         playsInline
-        className="fixed inset-0 h-full w-full object-cover -z-10"
+        aria-hidden="true"
+        className="fixed inset-0 h-full w-full object-cover object-center select-none"
       >
         <source src="/bg-video.mp4" type="video/mp4" />
       </video>
 
-      <div className="relative z-10 p-6">
+      <div className="relative z-10 inset-0 bg-transparent p-6">
         <div className="mx-auto max-w-6xl">
           <div className="mb-10 rounded-2xl bg-white/90 p-6 shadow">
             <h2 className="mb-4 text-3xl font-semibold text-gray-900">
@@ -315,12 +337,12 @@ export default function HomePage() {
             ) : (
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {posts.map((post) => {
-                  const tagInfo = getTagInfo(post.tag);
-                  const mediaSource = post.media_url;
+            const tagInfo = getTagInfo(post.tag);
+            const mediaSource = post.media_path ? signedUrls[post.media_path] : null;
 
-                  const isVideo =
-                    post.media_type === 'video' ||
-                    /\.(mp4|mov|webm|m4v|3gp)(\?.*)?$/i.test(mediaSource || '');
+            const isVideo =
+              post.media_type === 'video' ||
+              /\.(mp4|mov|webm|m4v|3gp)$/i.test(post.media_path || '');
 
                   return (
                     <div
@@ -328,22 +350,24 @@ export default function HomePage() {
                       className="overflow-hidden rounded-2xl bg-white/95 shadow"
                       style={{ borderTop: `10px solid ${tagInfo.bg}` }}
                     >
-                      {isVideo ? (
-                        <video
-                          src={mediaSource}
-                          autoPlay
-                          loop
-                          muted
-                          playsInline
-                          className="h-64 w-full object-cover"
-                        />
-                      ) : (
-                        <img
-                          src={mediaSource}
-                          alt={post.caption}
-                          className="h-64 w-full object-cover"
-                        />
-                      )}
+                      {mediaSource ? (
+                      isVideo ? (
+                     <video
+                      src={mediaSource}
+                      autoPlay
+                      loop
+                      muted
+                      playsInline
+                      className="h-64 w-full object-cover"
+                      />
+                    ) : (
+                      <img
+                        src={mediaSource}
+                        alt={post.caption}
+                        className="h-64 w-full object-cover"
+                      />
+                    )
+                  ) : null}
 
                       <div className="p-4">
                         <span
