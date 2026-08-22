@@ -6,7 +6,7 @@ import { supabase } from '@/lib/supabase';
 const TAGS = [
   {
     value: 'zone_mate',
-    label: 'Rave & Brag about a Zone-mate',
+    label: 'Rave & Brag about a Zonemate',
     bg: '#FACC15',
     text: '#222222',
   },
@@ -23,6 +23,8 @@ const TAGS = [
     text: '#FFFFFF',
   },
 ];
+
+const TABS = [{ value: 'all', label: 'All', bg: '#000000', text: '#FFFFFF' }, ...TAGS];
 
 type Post = {
   id: string;
@@ -42,6 +44,7 @@ export default function HomePage() {
   const [posts, setPosts] = useState<Post[]>([]);
   const [loading, setLoading] = useState(false);
   const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+  const [activeTab, setActiveTab] = useState<string>('all');
 
   async function fetchPosts() {
     const { data, error } = await supabase
@@ -245,6 +248,9 @@ export default function HomePage() {
     return TAGS.find((t) => t.value === tagValue) ?? TAGS[0];
   }
 
+  const filteredPosts =
+    activeTab === 'all' ? posts : posts.filter((post) => post.tag === activeTab);
+
   return (
     <main className="relative min-h-screen overflow-hidden text-gray-900">
       <video
@@ -331,12 +337,27 @@ export default function HomePage() {
 
           <section>
             <h2 className="mb-4 text-3xl font-semibold text-white">Wall</h2>
-
-            {posts.length === 0 ? (
+            <div className="mb-6 flex flex-wrap gap-3">
+          {TABS.map((t) => (
+            <button
+              key={t.value}
+              onClick={() => setActiveTab(t.value)}
+              className="rounded-full border px-4 py-2 text-sm font-semibold transition"
+              style={{
+                backgroundColor: activeTab === t.value ? t.bg : '#ffffff',
+                color: activeTab === t.value ? t.text : '#111827',
+                borderColor: t.bg,
+              }}
+            >
+              {t.label}
+            </button>
+          ))}
+        </div>
+            {filteredPosts.length === 0 ? (
               <p className="text-gray-700">No posts yet. Be the first to launch one!</p>
             ) : (
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
-                {posts.map((post) => {
+                {filteredPosts.map((post) => {
             const tagInfo = getTagInfo(post.tag);
             const mediaSource = post.media_path ? signedUrls[post.media_path] : null;
 
