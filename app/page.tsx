@@ -379,13 +379,13 @@ export default function HomePage() {
                       loop
                       muted
                       playsInline
-                      className="h-64 w-full object-cover"
+                      className="h-64 w-full object-contain"
                       />
                     ) : (
                       <img
                         src={mediaSource}
                         alt={post.caption}
-                        className="h-64 w-full object-cover"
+                        className="h-64 w-full object-contain"
                       />
                     )
                   ) : null}
